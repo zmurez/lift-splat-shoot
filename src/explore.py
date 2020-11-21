@@ -17,6 +17,17 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     get_nusc_maps, plot_nusc_map)
 from .models import compile_model
 
+def create_bev_grid(bev_size=(200, 200)):
+    width, height = bev_size
+    x = torch.linspace(-49.75, 49.75, width, dtype=torch.float32)
+    y = torch.linspace(-49.75, 49.75, height, dtype=torch.float32)
+    x_grid, y_grid = torch.meshgrid(x, y)
+    x_grid, y_grid = torch.t(x_grid).view(1, height, width, 1), torch.t(y_grid).view(1, height, width, 1)
+    z_grid = torch.zeros_like(x_grid)
+    grid = torch.cat([y_grid, x_grid, z_grid], dim=-1).float()
+    grid = grid[0]
+    grid = grid.permute((2, 0, 1))
+    return grid
 
 def lidar_check(version,
                 dataroot='/data/nuscenes',
@@ -71,10 +82,14 @@ def lidar_check(version,
     gs = mpl.gridspec.GridSpec(2, 6, width_ratios=(1, 1, 1, 2*rat, 2*rat, 2*rat))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
+
     for epoch in range(nepochs):
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, binimgs) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, binimgs, zimg) in enumerate(loader):
 
             img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
+
+            grid = create_bev_grid()
+            grid[2] = zimg[0,0]
 
             for si in range(imgs.shape[0]):
                 plt.clf()
@@ -84,12 +99,20 @@ def lidar_check(version,
                     mask = get_only_in_img_mask(ego_pts, H, W)
                     plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
 
+                    grid_masked = grid[:, binimgs[si].squeeze(0)==1]
+                    ego_pts_grid = ego_to_cam(grid_masked, rots[si, imgi], trans[si, imgi], intrins[si, imgi])
+                    mask_grid = get_only_in_img_mask(ego_pts_grid, H, W)
+                    plot_pts_grid = post_rots[si, imgi].matmul(ego_pts_grid) + post_trans[si, imgi].unsqueeze(1)
+
                     ax = plt.subplot(gs[imgi // 3, imgi % 3])
                     showimg = denormalize_img(img)
                     plt.imshow(showimg)
                     if show_lidar:
-                        plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask],
-                                s=5, alpha=0.1, cmap='jet')
+                        # plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask],
+                        #         s=5, alpha=0.1, cmap='jet')
+
+                        plt.scatter(plot_pts_grid[0, mask_grid], plot_pts_grid[1, mask_grid],
+                                s=5, alpha=0.9)
                     # plot_pts = post_rots[si, imgi].matmul(img_pts[si, imgi].view(-1, 3).t()) + post_trans[si, imgi].unsqueeze(1)
                     # plt.scatter(img_pts[:, :, :, 0].view(-1), img_pts[:, :, :, 1].view(-1), s=1)
                     plt.axis('off')
