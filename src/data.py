@@ -131,10 +131,9 @@ class NuscData(torch.utils.data.Dataset):
         samp1 = self.nusc.get('sample_data', rec['data']['LIDAR_TOP'])
         pose_record = self.nusc.get('ego_pose', samp1['ego_pose_token'])
         yaw = Quaternion(pose_record['rotation']).yaw_pitch_roll[0]
-        rot = Quaternion(scalar=np.cos(yaw / 2), vector=[0, 0, np.sin(yaw / 2)]).inverse
-        tran = -np.array(pose_record['translation'])[:,None]
+        rot = Quaternion(scalar=np.cos(yaw / 2), vector=[0, 0, np.sin(yaw / 2)])#.inverse
+        tran = np.array(pose_record['translation'])[:,None]
         transform = np.vstack((np.hstack((rot.rotation_matrix, tran)), np.array([0,0,0,1])))
-        transform = np.linalg.inv(transform)
 
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
@@ -147,16 +146,20 @@ class NuscData(torch.utils.data.Dataset):
             pose_record = self.nusc.get('ego_pose', samp['ego_pose_token'])
             rot = Quaternion(pose_record['rotation']).inverse
             tran = -np.array(pose_record['translation'])[:,None]
-            transform1 = np.vstack((np.hstack((rot.rotation_matrix, tran)), np.array([0,0,0,1])))
+            transform1 = np.vstack((np.hstack((rot.rotation_matrix, rot.rotation_matrix@tran)), np.array([0,0,0,1])))
 
-            # go from egopose to sensor
+            # # go from egopose to sensor
             sens = self.nusc.get('calibrated_sensor', samp['calibrated_sensor_token'])
             intrin = torch.Tensor(sens['camera_intrinsic'])
-            rot = Quaternion(sens['rotation'])
+            rot = Quaternion(sens['rotation'])#.inverse
             tran = np.array(sens['translation'])[:,None]
             transform2 = np.vstack((np.hstack((rot.rotation_matrix, tran)), np.array([0,0,0,1])))
+            transform2 = np.linalg.inv(transform2)
 
-            transform3 =  transform @ transform1 @ transform2
+            # transform3 = transform
+            # transform3 = transform1 @ transform 
+            transform3 = transform2 @ transform1 @ transform
+            transform3 = np.linalg.inv(transform3)
             rot = torch.Tensor(transform3[:3,:3])
             tran = torch.Tensor(transform3[:3,3])
 
@@ -254,7 +257,7 @@ class VizData(NuscData):
         lidar_data = self.get_lidar_data(rec, nsweeps=3)
         binimg, zimg = self.get_binimg(rec)
         
-        return imgs, rots, trans, intrins, post_rots, post_trans, lidar_data, binimg, zimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, lidar_data, binimg, zimg, rec['token']
 
 
 class SegmentationData(NuscData):
@@ -268,7 +271,7 @@ class SegmentationData(NuscData):
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
         binimg, zimg = self.get_binimg(rec)
         
-        return imgs, rots, trans, intrins, post_rots, post_trans, binimg, zimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, binimg, zimg, rec['token']
 
 
 def worker_rnd_init(x):

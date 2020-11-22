@@ -4,12 +4,16 @@ Licensed under the NVIDIA Source Code License. See LICENSE at https://github.com
 Authors: Jonah Philion and Sanja Fidler
 """
 
+import numpy as np
+from pyquaternion import Quaternion
 import torch
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
+
+from nuscenes.utils.geometry_utils import box_in_image
 
 from .data import compile_data
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
@@ -84,7 +88,13 @@ def lidar_check(version,
 
 
     for epoch in range(nepochs):
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, binimgs, zimg) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, binimgs, zimg, token) in enumerate(loader):
+
+            # print(batchi)
+            # if batchi<40:
+            #     continue
+
+            sample = loader.dataset.nusc.get('sample', token[0])
 
             img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
@@ -113,6 +123,58 @@ def lidar_check(version,
 
                         plt.scatter(plot_pts_grid[0, mask_grid], plot_pts_grid[1, mask_grid],
                                 s=5, alpha=0.9)
+
+                    # cam_id = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'][imgi]
+                    # sample_data = loader.dataset.nusc.get('sample_data', sample['data'][cam_id])
+                    # intrinsics = post_rots[si,imgi] @ intrins[si,imgi]
+                    # intrinsics[1,2] -= 48 # undo the crop
+                    
+                    # # mpl.use('QT4AGG')
+                    # # ax = plt.axes()
+
+                    # boxes = loader.dataset.nusc.get_boxes(sample_data['token'])
+                    # pose_record = loader.dataset.nusc.get('ego_pose', sample_data['ego_pose_token'])
+                    # cs_record = loader.dataset.nusc.get('calibrated_sensor', sample_data['calibrated_sensor_token'])
+                    # box_pts = []
+                    # for box in boxes:
+                    #     box.translate(-np.array(pose_record['translation']))
+                    #     box.rotate(Quaternion(pose_record['rotation']).inverse)
+                    #     # box.render(ax)
+
+                    #     box.translate(-np.array(cs_record['translation']))
+                    #     box.rotate(Quaternion(cs_record['rotation']).inverse)
+                    #     if 'vehicle' in box.name and box_in_image(box, intrinsics, showimg.size):
+                    #         box.render(ax, view=intrinsics, normalize=True)
+
+
+                        # box_pts.append(box.bottom_corners())
+                    # grid1 = rots[si, imgi] @ grid_masked + trans[si, imgi][:,None]
+
+                    # # rot = Quaternion(cs_record['rotation'])
+                    # # tran = np.array(cs_record['translation'])[:,None]
+                    # # moo = np.vstack((np.hstack((rot.rotation_matrix, tran)), np.array([0,0,0,1])))
+                    # # moo = np.linalg.inv(moo)
+                    # # grid1 = moo[:3,:3] @ grid1.numpy() + moo[:3,3:]
+                    # grid1 = intrinsics @ grid1
+                    # grid1 = grid1[:,grid1[2]>0]
+                    # grid1 = grid1[:2] / grid1[2]
+
+
+                    # plt.plot(grid1[0], grid1[1], '.b')
+
+                    # import trimesh
+                    # box_pts = np.concatenate(box_pts, 1)
+                    # trimesh.Trimesh(grid1.T, vertex_colors=(255,0,0)).export('test1.ply')
+                    # trimesh.Trimesh(box_pts.T, vertex_colors=(0,0,255)).export('test2.ply')
+
+                    # plt.show()
+                    
+
+
+                    ax.set_xlim(0, showimg.size[0])
+                    ax.set_ylim(showimg.size[1], 0)
+                    
+
                     # plot_pts = post_rots[si, imgi].matmul(img_pts[si, imgi].view(-1, 3).t()) + post_trans[si, imgi].unsqueeze(1)
                     # plt.scatter(img_pts[:, :, :, 0].view(-1), img_pts[:, :, :, 1].view(-1), s=1)
                     plt.axis('off')
