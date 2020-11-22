@@ -99,7 +99,7 @@ def lidar_check(version,
             img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
 
             grid = create_bev_grid()
-            grid[2] = zimg[0,0]
+            grid[2] = zimg[0,0] # use gt height
 
             for si in range(imgs.shape[0]):
                 plt.clf()
