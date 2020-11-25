@@ -48,17 +48,18 @@ class QuickCumsum(torch.autograd.Function):
 
         return val, None, None
 
+
 class FrustumPooling(nn.Module):
-    def __init__(self, xbound, ybound, zbound, dbound, final_dim, downsample, use_quickcumsum=True):
+    def __init__(self, xbound, ybound, zbound, dbound, image_size, downsample, use_quickcumsum=True):
         """ Pools camera frustums into Birds Eye View
 
         Args:
-            xbound: voxel grid dimension
-            ybound: voxel grid dimension
-            zbound: voxel grid dimension
-            dbound: depth planes in camera frustum (distance from camera in m)
-            final_dim: size of image that intrinsics corresponds to
-            downsample: fraction of the size of the feature maps
+            xbound: voxel grid dimension (min, max, step)
+            ybound: voxel grid dimension (min, max, step)
+            zbound: voxel grid dimension (min, max, step)
+            dbound: depth planes in camera frustum (min, max, step)
+            image_size: size of image that intrinsics corresponds to
+            downsample: fraction of the size of the feature maps (stride of backbone)
         """
         super().__init__()
         dx, bx, nx = gen_dx_bx(xbound, ybound, zbound)
@@ -68,7 +69,7 @@ class FrustumPooling(nn.Module):
         self.use_quickcumsum = use_quickcumsum
 
         # make grid in image plane
-        ogfH, ogfW = final_dim
+        ogfH, ogfW = image_size
         fH, fW = ogfH // downsample, ogfW // downsample
         ds = torch.arange(*dbound, dtype=torch.float).view(-1, 1, 1).expand(-1, fH, fW)
         D, _, _ = ds.shape
@@ -88,10 +89,13 @@ class FrustumPooling(nn.Module):
         """
         B, N, _ = trans.shape
 
+        points = self.frustum
+        
         # undo post-transformation
         # B x N x D x H x W x 3
-        points = self.frustum - post_trans.view(B, N, 1, 1, 1, 3)
-        points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
+        if post_trans is not None:
+            points = points - post_trans.view(B, N, 1, 1, 1, 3)
+            points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
 
         # cam_to_ego
         points = torch.cat((points[:, :, :, :, :, :2] * points[:, :, :, :, :, 2:3],
@@ -149,7 +153,17 @@ class FrustumPooling(nn.Module):
         return final
 
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans):
+    def forward(self, x, rots, trans, intrins, post_rots=None, post_trans=None):
+        """
+        Args:
+            x: (B x N x D x H x W x C) frustum feature maps
+            rots: (B x N x 3 x 3) rotation part of camera extrinsics (might be inv_extrinsics?)
+            trans: (B x N x 3 x 1) translation part of camera extrinsics (might be inv_extrinsics?)
+            intrins: (B x N x 3 x 3) camera intrinsics (of input image prior to downsampling by backbone)
+            post_rots: (B x N x 3 x 3) rotation and scale part of data augmention similarity transform
+            post_trans: (B x N x 3 x 3) translation part of data augmention similarity transform
+        """
+
         geom = self.get_geometry(rots, trans, intrins, post_rots, post_trans)
         x = self.voxel_pooling(geom, x)
         return x
