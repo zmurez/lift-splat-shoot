@@ -15,7 +15,8 @@ from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import Box
 from glob import glob
 
-from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
+from .tools import get_lidar_data, img_transform, normalize_img
+from .frustum_pooling import gen_dx_bx
 
 
 class NuscData(torch.utils.data.Dataset):

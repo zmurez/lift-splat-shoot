@@ -13,8 +13,9 @@ import matplotlib.patches as mpatches
 
 from .data import compile_data
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
-                    SimpleLoss, get_val_info, add_ego, gen_dx_bx,
+                    SimpleLoss, get_val_info, add_ego,
                     get_nusc_maps, plot_nusc_map)
+from .frustum_pooling import gen_dx_bx
 from .models import compile_model
 
 
@@ -236,7 +237,12 @@ def eval_model_iou(version,
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     print('loading', modelf)
-    model.load_state_dict(torch.load(modelf))
+    state_dict = torch.load(modelf)
+    del state_dict['dx']
+    del state_dict['bx']
+    del state_dict['nx']
+    del state_dict['frustum']
+    model.load_state_dict(state_dict)
     model.to(device)
 
     loss_fn = SimpleLoss(1.0).cuda(gpuid)
@@ -296,7 +302,12 @@ def viz_model_preds(version,
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
     print('loading', modelf)
-    model.load_state_dict(torch.load(modelf))
+    state_dict = torch.load(modelf)
+    del state_dict['dx']
+    del state_dict['bx']
+    del state_dict['nx']
+    del state_dict['frustum']
+    model.load_state_dict(state_dict)
     model.to(device)
 
     dx, bx, _ = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
