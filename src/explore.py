@@ -242,6 +242,8 @@ def eval_model_iou(version,
     del state_dict['bx']
     del state_dict['nx']
     del state_dict['frustum']
+    state_dict['depthnet.weight'] = state_dict.pop('camencode.depthnet.weight')
+    state_dict['depthnet.bias'] = state_dict.pop('camencode.depthnet.bias')
     model.load_state_dict(state_dict)
     model.to(device)
 
@@ -307,6 +309,8 @@ def viz_model_preds(version,
     del state_dict['bx']
     del state_dict['nx']
     del state_dict['frustum']
+    state_dict['depthnet.weight'] = state_dict.pop('camencode.depthnet.weight')
+    state_dict['depthnet.bias'] = state_dict.pop('camencode.depthnet.bias')
     model.load_state_dict(state_dict)
     model.to(device)
 

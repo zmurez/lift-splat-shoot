@@ -34,18 +34,14 @@ class Up(nn.Module):
         return self.conv(x1)
 
 
-class CamEncode(nn.Module):
-    def __init__(self, D, C, downsample):
-        super(CamEncode, self).__init__()
-        self.D = D
-        self.C = C
+class EfficientNetBackbone(nn.Module):
+    def __init__(self):
+        super().__init__()
 
         self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
-
         self.up1 = Up(320+112, 512)
-        self.depthnet = nn.Conv2d(512, self.D + self.C, kernel_size=1, padding=0)
 
-    def get_eff_depth(self, x):
+    def forward(self, x):
         # adapted from https://github.com/lukemelas/EfficientNet-PyTorch/blob/master/efficientnet_pytorch/model.py#L231
         endpoints = dict()
 
@@ -68,20 +64,6 @@ class CamEncode(nn.Module):
         x = self.up1(endpoints['reduction_5'], endpoints['reduction_4'])
         return x
 
-    def get_depth_feat(self, x):
-        x = self.get_eff_depth(x)
-        # Depth
-        x = self.depthnet(x)
-
-        depth = x[:, :self.D].softmax(dim=1)
-        new_x = depth.unsqueeze(1) * x[:, self.D:(self.D + self.C)].unsqueeze(2)
-
-        return depth, new_x
-
-    def forward(self, x):
-        depth, x = self.get_depth_feat(x)
-
-        return x
 
 
 class BevEncode(nn.Module):
@@ -142,15 +124,23 @@ class LiftSplatShoot(nn.Module):
 
 
         self.camC = 64
-        self.camencode = CamEncode(self.frustum_pooling.D, self.camC, self.downsample)
+        self.camencode = EfficientNetBackbone() # backbone
+        self.D = self.frustum_pooling.D
+        self.depthnet = nn.Conv2d(512, self.D + self.camC, kernel_size=1, padding=0) # depth and feature heads
+        
         self.bevencode = BevEncode(inC=self.camC, outC=outC)
 
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
         B, N, C, imH, imW = x.shape
         x = x.view(B*N, C, imH, imW)
-        x = self.camencode(x)
-        x = x.view(B, N, self.camC, self.frustum_pooling.D, imH//self.downsample, imW//self.downsample)
+        x = self.camencode(x) # backbone
+
+        x = self.depthnet(x) # feature and depth heads
+        depth = x[:, :self.D].softmax(dim=1)
+        x = depth.unsqueeze(1) * x[:, self.D:(self.D + self.camC)].unsqueeze(2) # outer product
+
+        x = x.view(B, N, self.camC, self.D, imH//self.downsample, imW//self.downsample)
         x = x.permute(0, 1, 3, 4, 5, 2)
 
         x = self.frustum_pooling(x, rots, trans, intrins, post_rots, post_trans)
